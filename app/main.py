@@ -1,6 +1,6 @@
 # app/main.py
 
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -11,7 +11,10 @@ from src.ner import extract_entities
 from src.qa import answer_question
 
 from src.groq_qa import answer_question_groq
+import io
+from PyPDF2 import PdfReader
 
+from src.rag import answer_question_rag
 
 
 
@@ -177,3 +180,75 @@ def qa_gen_endpoint(payload: QAGenRequest):
         context=payload.context,
     )
     return QAGenResponse(answer=answer)
+
+@app.post("/extract_text")
+async def extract_text(file: UploadFile = File(...)):
+    """
+    Extract text from an uploaded PDF and return it as plain text.
+    For now we only support .pdf files.
+    """
+    filename = file.filename or ""
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files are supported for text extraction.",
+        )
+
+    try:
+        # Read file content into memory
+        content = await file.read()
+        pdf_bytes = io.BytesIO(content)
+
+        reader = PdfReader(pdf_bytes)
+        extracted_text_parts = []
+
+        for page in reader.pages:
+            page_text = page.extract_text() or ""
+            extracted_text_parts.append(page_text)
+
+        full_text = "\n\n".join(extracted_text_parts).strip()
+
+        if not full_text:
+            raise HTTPException(
+                status_code=422,
+                detail="No extractable text found in the PDF (might be scanned or image-based).",
+            )
+
+        return {"text": full_text}
+
+    except HTTPException:
+        # re-raise our own HTTPException
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to extract text from PDF: {e}",
+        )
+
+class QARagRequest(BaseModel):
+  question: str
+  context: str
+  top_k: int | None = 3
+
+
+class QARagResponse(BaseModel):
+  answer: str
+  retrieved_chunks: list[str]
+
+@app.post("/qa_rag", response_model=QARagResponse)
+def qa_rag_endpoint(payload: QARagRequest):
+    """
+    RAG-based QA:
+    - Splits the full context into chunks
+    - Retrieves top-k relevant chunks using embeddings
+    - Asks Groq with only those chunks
+    """
+    result = answer_question_rag(
+        question=payload.question,
+        full_context=payload.context,
+        top_k=payload.top_k or 3,
+    )
+    return QARagResponse(
+        answer=result["answer"],
+        retrieved_chunks=result["retrieved_chunks"],
+    )

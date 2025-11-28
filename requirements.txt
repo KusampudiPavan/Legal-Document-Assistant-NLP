@@ -12,3 +12,5 @@ ipykernel
 spacy
 groq
 dotenv
+PyPDF2
+sentence-transformers
