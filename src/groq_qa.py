@@ -174,3 +174,66 @@ def answer_question_groq(question: str, context: str) -> str:
         raise RuntimeError(f"Unexpected Groq API response format: {e}, data={data}")
 
     return answer
+
+def _build_summary_prompt(text: str) -> str:
+    """
+    Build a summarization prompt for Groq (Llama3).
+    """
+    return f"""You are a legal document summarization assistant.
+
+Summarize the following legal or policy text in clear, concise English.
+Focus on the main obligations, rights, actors, and conditions.
+Use 4–8 sentences. Do not add any information that is not present in the text.
+
+TEXT:
+{text}
+"""
+
+
+def summarize_with_groq(text: str, max_tokens: int = 256) -> str:
+    """
+    Summarize a legal/policy text using Groq LLM (Llama3).
+    """
+    if not GROQ_API_KEY:
+        raise RuntimeError(
+            "GROQ_API_KEY is not set in environment. Please export it before running."
+        )
+
+    prompt = _build_summary_prompt(text)
+
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": GROQ_MODEL_NAME,
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ],
+        "temperature": 0.2,
+        "max_tokens": max_tokens,
+    }
+
+    response = requests.post(
+        GROQ_API_URL,
+        headers=headers,
+        json=payload,
+        timeout=30,
+    )
+
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Groq API error {response.status_code}: {response.text}"
+        )
+
+    data = response.json()
+    try:
+        answer = data["choices"][0]["message"]["content"].strip()
+    except (KeyError, IndexError) as e:
+        raise RuntimeError(f"Unexpected Groq API response format: {e}, data={data}")
+
+    return answer

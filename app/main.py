@@ -10,11 +10,11 @@ from src.ner import extract_entities
 
 from src.qa import answer_question
 
-from src.groq_qa import answer_question_groq
+from src.groq_qa import answer_question_groq, summarize_with_groq
 import io
 from PyPDF2 import PdfReader
 
-from src.rag import answer_question_rag
+from src.rag import answer_question_rag, summarize_rag
 
 
 
@@ -42,6 +42,25 @@ class SummarizeRequest(BaseModel):
 class SummarizeResponse(BaseModel):
     summary: str
 
+class SummarizeGenRequest(BaseModel):
+    text: str
+    max_new_tokens: int | None = 256
+
+
+class SummarizeGenResponse(BaseModel):
+    summary: str
+
+
+class SummarizeRagRequest(BaseModel):
+    text: str
+    max_new_tokens: int | None = 256
+    top_k: int | None = 5
+
+
+class SummarizeRagResponse(BaseModel):
+    summary: str
+    retrieved_chunks: list[str]
+
 
 @app.get("/health")
 def health_check():
@@ -58,6 +77,33 @@ def summarize_endpoint(payload: SummarizeRequest):
         max_new_tokens=payload.max_new_tokens or 256,
     )
     return SummarizeResponse(summary=summary)
+
+@app.post("/summarize_groq", response_model=SummarizeGenResponse)
+def summarize_groq_endpoint(payload: SummarizeGenRequest):
+    """
+    Summarize text using Groq LLM (Llama3).
+    """
+    summary = summarize_with_groq(
+        payload.text,
+        max_tokens=payload.max_new_tokens or 256,
+    )
+    return SummarizeGenResponse(summary=summary)
+
+@app.post("/summarize_rag", response_model=SummarizeRagResponse)
+def summarize_rag_endpoint(payload: SummarizeRagRequest):
+    """
+    RAG-based summarization:
+    - Retrieve top-k chunks via embeddings
+    - Summarize them with Groq
+    """
+    result = summarize_rag(
+        full_text=payload.text,
+        top_k=payload.top_k or 5,
+    )
+    return SummarizeRagResponse(
+        summary=result["summary"],
+        retrieved_chunks=result["retrieved_chunks"],
+    )
 
 
 class NerRequest(BaseModel):

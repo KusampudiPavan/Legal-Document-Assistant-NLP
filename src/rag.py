@@ -10,7 +10,7 @@ import nltk
 from nltk.tokenize import sent_tokenize
 from sentence_transformers import SentenceTransformer
 
-from .groq_qa import answer_question_groq
+from .groq_qa import answer_question_groq, summarize_with_groq
 
 # Long text → chunk → embed → choose top relevant chunks → send only those to Groq → answer.
 
@@ -117,5 +117,37 @@ def answer_question_rag(question: str, full_context: str, top_k: int = 3) -> dic
 
     return {
         "answer": answer,
+        "retrieved_chunks": top_chunks,
+    }
+
+def summarize_rag(full_text: str, top_k: int = 5) -> dict:
+    """
+    RAG-style summarization:
+      1. Chunk the full text.
+      2. Use a generic 'summary' query to retrieve top-k chunks.
+      3. Ask Groq to summarize only those chunks.
+    """
+    chunks = chunk_text(full_text)
+    if not chunks:
+        return {
+            "summary": "No usable text found to summarize.",
+            "retrieved_chunks": [],
+        }
+
+    chunk_texts, embeddings = build_index(chunks)
+
+    # Generic query representing "summary of the document"
+    summary_query = (
+        "What are the main obligations, rights, and key points described "
+        "in this legal or policy text?"
+    )
+
+    top_chunks = retrieve_top_k(summary_query, chunk_texts, embeddings, top_k=top_k)
+    focused_context = "\n\n".join(top_chunks)
+
+    summary = summarize_with_groq(focused_context)
+
+    return {
+        "summary": summary,
         "retrieved_chunks": top_chunks,
     }

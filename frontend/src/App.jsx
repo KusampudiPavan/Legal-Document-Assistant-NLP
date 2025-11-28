@@ -24,6 +24,11 @@ function App() {
   const [entities, setEntities] = useState([]);
   const [qaResult, setQaResult] = useState(null);
   const [error, setError] = useState("");
+  // Summary mode: local T5, Groq, or RAG
+  const [summaryMode, setSummaryMode] = useState("local"); // "local" | "groq" | "rag"
+
+  // // QA mode: extractive / generative / rag
+  // const [qaMode, setQaMode] = useState("extractive");
 
   // QA mode: "extractive" (local RoBERTa) or "generative" (Groq Llama3 via /qa_gen)
   const [qaMode, setQaMode] = useState("extractive");
@@ -68,8 +73,7 @@ function App() {
     }
   };
   
-
-  const handleSummarize = async () => {
+  const handleSummarizeLocal = async () => {
     if (!text.trim()) {
       setError("Please enter some text to summarize.");
       return;
@@ -91,6 +95,80 @@ function App() {
       setLoading(false);
     }
   };
+
+  const handleSummarizeGroq = async () => {
+    if (!text.trim()) {
+      setError("Please enter some text to summarize.");
+      return;
+    }
+    resetOutputs();
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/summarize_groq`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, max_new_tokens: 512 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Error from Groq summary API");
+      setSummary(data.summary);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSummarizeRag = async () => {
+    if (!text.trim()) {
+      setError("Please enter some text to summarize.");
+      return;
+    }
+    resetOutputs();
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/summarize_rag`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          max_new_tokens: 512,
+          top_k: 5,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Error from RAG summary API");
+      setSummary(data.summary);
+      // data.retrieved_chunks is available if later you want to show them
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // const handleSummarize = async () => {
+  //   if (!text.trim()) {
+  //     setError("Please enter some text to summarize.");
+  //     return;
+  //   }
+  //   resetOutputs();
+  //   setLoading(true);
+  //   try {
+  //     const res = await fetch(`${API_BASE}/summarize`, {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //       body: JSON.stringify({ text, max_new_tokens: 256 }),
+  //     });
+  //     const data = await res.json();
+  //     if (!res.ok) throw new Error(data.detail || "Error from API");
+  //     setSummary(data.summary);
+  //   } catch (e) {
+  //     setError(e.message);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   const handleEntities = async () => {
     if (!text.trim()) {
@@ -413,16 +491,91 @@ function App() {
 
   const renderTabContent = () => {
     switch (activeTab) {
+      // case "Summary":
+      //   return (
+      //     <>
+      //       <button
+      //         className="primary-btn"
+      //         onClick={handleSummarize}
+      //         disabled={loading}
+      //       >
+      //         {loading ? "Summarizing..." : "Summarize Text"}
+      //       </button>
+      //       {renderOutputs()}
+      //     </>
+      //   );
+
       case "Summary":
         return (
           <>
+            <div className="qa-mode-toggle">
+              <span style={{ fontSize: "0.8rem", color: "#9ca3af" }}>
+                Summary Mode:
+              </span>
+              <div className="qa-mode-buttons">
+                <button
+                  type="button"
+                  className={`mode-btn ${
+                    summaryMode === "local" ? "mode-active" : ""
+                  }`}
+                  onClick={() => {
+                    resetOutputs();
+                    setSummaryMode("local");
+                  }}
+                >
+                  Model (T5)
+                </button>
+                <button
+                  type="button"
+                  className={`mode-btn ${
+                    summaryMode === "groq" ? "mode-active" : ""
+                  }`}
+                  onClick={() => {
+                    resetOutputs();
+                    setSummaryMode("groq");
+                  }}
+                >
+                  Generative (Groq)
+                </button>
+                <button
+                  type="button"
+                  className={`mode-btn ${
+                    summaryMode === "rag" ? "mode-active" : ""
+                  }`}
+                  onClick={() => {
+                    resetOutputs();
+                    setSummaryMode("rag");
+                  }}
+                >
+                  RAG (Embed + Groq)
+                </button>
+              </div>
+            </div>
+
             <button
               className="primary-btn"
-              onClick={handleSummarize}
+              onClick={
+                summaryMode === "local"
+                  ? handleSummarizeLocal
+                  : summaryMode === "groq"
+                  ? handleSummarizeGroq
+                  : handleSummarizeRag
+              }
               disabled={loading}
             >
-              {loading ? "Summarizing..." : "Summarize Text"}
+              {loading
+                ? summaryMode === "local"
+                  ? "Summarizing (model)..."
+                  : summaryMode === "groq"
+                  ? "Summarizing (Groq LLM)..."
+                  : "Summarizing (RAG + Groq)..."
+                : summaryMode === "local"
+                ? "Summarize (Model T5)"
+                : summaryMode === "groq"
+                ? "Summarize (Groq LLM)"
+                : "Summarize (RAG + Groq)"}
             </button>
+
             {renderOutputs()}
           </>
         );

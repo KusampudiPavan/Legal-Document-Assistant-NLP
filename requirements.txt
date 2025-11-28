@@ -14,3 +14,6 @@ groq
 dotenv
 PyPDF2
 sentence-transformers
+evaluate 
+rouge_score 
+accelerate
