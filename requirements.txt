@@ -1,0 +1,14 @@
+torch
+transformers
+datasets
+scikit-learn
+sentencepiece
+nltk
+fastapi
+uvicorn
+python-multipart
+datasets
+ipykernel
+spacy
+groq
+dotenv
